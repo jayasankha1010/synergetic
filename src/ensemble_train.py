@@ -33,7 +33,7 @@ def main():
     # --- Parse Command Line Arguments ---
     parser = argparse.ArgumentParser(description="Ensemble Training for Gene Prioritization")
     parser.add_argument("-e", "--exp_name", type=str, required=True, help="Name of the experiment")
-    parser.add_argument("-n", "--num_ensembles", type=int, default=5, help="Number of models to train and average")
+    parser.add_argument("-n", "--num_ensembles", type=int, default=100, help="Number of models to train and average")
     parser.add_argument("--single_dims", type=str, default="512,256,128,64,32", help="Hidden layers for Single-Task")
     parser.add_argument("--shared_dims", type=str, default="512,256,128", help="Shared layers for Multi-Task")
     parser.add_argument("--head_dims", type=str, default="64,32", help="Head layers for Multi-Task")
