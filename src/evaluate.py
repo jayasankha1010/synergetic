@@ -2,6 +2,54 @@ import numpy as np
 import matplotlib.pyplot as plt
 import os
 import csv
+from sklearn.calibration import calibration_curve
+import matplotlib.pyplot as plt
+import numpy as np
+
+def plot_reliability_diagram_and_ece(predictions_dict, known_genes, new_genes, all_genes, title, save_path, n_bins=10):
+    """Calculates ECE and plots a reliability diagram for the candidate genes."""
+    # 1. Isolate the candidate pool (unlabeled pool)
+    candidate_genes = [g for g in all_genes if g not in known_genes]
+    
+    # 2. Extract true labels (1 if discovered in 2025, else 0) and predicted probabilities
+    y_true = np.array([1 if g in new_genes else 0 for g in candidate_genes])
+    y_prob = np.array([predictions_dict[g] for g in candidate_genes])
+    
+    # 3. Calculate Expected Calibration Error (ECE)
+    bin_limits = np.linspace(0, 1, n_bins + 1)
+    ece = 0.0
+    for i in range(n_bins):
+        bin_idx = (y_prob >= bin_limits[i]) & (y_prob < bin_limits[i+1])
+        if i == n_bins - 1: # Include exactly 1.0 in the final bin
+            bin_idx = (y_prob >= bin_limits[i]) & (y_prob <= bin_limits[i+1])
+        
+        bin_count = np.sum(bin_idx)
+        if bin_count > 0:
+            bin_acc = np.mean(y_true[bin_idx])
+            bin_conf = np.mean(y_prob[bin_idx])
+            ece += (bin_count / len(y_prob)) * np.abs(bin_acc - bin_conf)
+
+    # 4. Generate the Reliability Diagram
+    prob_true, prob_pred = calibration_curve(y_true, y_prob, n_bins=n_bins, strategy='uniform')
+    
+    plt.figure(figsize=(6, 6))
+    plt.plot([0, 1], [0, 1], linestyle='--', color='gray', label='Perfectly Calibrated')
+    
+    if len(prob_pred) > 0:
+        plt.plot(prob_pred, prob_true, marker='o', color='blue', label=f'Model (ECE: {ece:.4f})')
+        
+    plt.xlabel('Mean Predicted Probability (Confidence)')
+    plt.ylabel('Fraction of True Positives (Actual 2025 Discoveries)')
+    plt.title(f'Reliability Diagram: {title}')
+    plt.legend(loc="upper left")
+    plt.grid(True, alpha=0.3)
+    
+    # Save the plot
+    os.makedirs(os.path.dirname(save_path), exist_ok=True)
+    plt.savefig(save_path, dpi=300, bbox_inches='tight')
+    plt.close()
+    
+    return ece
 
 def save_ranked_predictions_csv(predictions_dict, known_genes, new_genes, all_genes, save_path):
     """

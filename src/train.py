@@ -5,7 +5,7 @@ import torch.optim as optim
 from torch.utils.data import DataLoader
 import argparse
 import csv
-from evaluate import calculate_prioritization_metrics, plot_barcode
+from evaluate import calculate_prioritization_metrics, plot_barcode, plot_reliability_diagram_and_ece
 
 # Import our custom modules
 from data_loader import MultiTaskEmbeddingDataset
@@ -227,22 +227,6 @@ def main():
             preds_cp_mtl[uid] = torch.sigmoid(p_cp).item()
             preds_dee_mtl[uid] = torch.sigmoid(p_dee).item()
 
-    # --- Calculate Metrics ---
-    # 1. CP - Single vs MTL
-    # mr_cp_single, fe_cp_single = calculate_prioritization_metrics(preds_cp_single, known_cp, new_cp, all_genes)
-    # mr_cp_mtl, fe_cp_mtl = calculate_prioritization_metrics(preds_cp_mtl, known_cp, new_cp, all_genes)
-    
-    # # 2. DEE - Single vs MTL
-    # mr_dee_single, fe_dee_single = calculate_prioritization_metrics(preds_dee_single, known_dee, new_dee, all_genes)
-    # mr_dee_mtl, fe_dee_mtl = calculate_prioritization_metrics(preds_dee_mtl, known_dee, new_dee, all_genes)
-
-    # print("\n=== FINAL RESULTS (Post-2022 Discoveries) ===")
-    # print(f"CP  (Single Task) -> Median Rank: {mr_cp_single}, Fold Enrich @1%: {fe_cp_single:.2f}")
-    # print(f"CP  (Multi-Task)  -> Median Rank: {mr_cp_mtl}, Fold Enrich @1%: {fe_cp_mtl:.2f}")
-    # print("------------------------------------------------")
-    # print(f"DEE (Single Task) -> Median Rank: {mr_dee_single}, Fold Enrich @1%: {fe_dee_single:.2f}")
-    # print(f"DEE (Multi-Task)  -> Median Rank: {mr_dee_mtl}, Fold Enrich @1%: {fe_dee_mtl:.2f}")
-
     # --- Calculate Metrics & Unpack Ranks ---
     mr_cp_s, fe_cp_s, ranks_cp_s, tot_cp = calculate_prioritization_metrics(preds_cp_single, known_cp, new_cp, all_genes)
     mr_cp_m, fe_cp_m, ranks_cp_m, _ = calculate_prioritization_metrics(preds_cp_mtl, known_cp, new_cp, all_genes)
@@ -263,6 +247,29 @@ def main():
     plot_barcode(ranks_cp_m, tot_cp, f"{experiment_name} - CP (Multi-Task)", f"../results/plots/{experiment_name}_CP_MTL.png")
     plot_barcode(ranks_dee_s, tot_dee, f"{experiment_name} - DEE (Single Task)", f"../results/plots/{experiment_name}_DEE_Single.png")
     plot_barcode(ranks_dee_m, tot_dee, f"{experiment_name} - DEE (Multi-Task)", f"../results/plots/{experiment_name}_DEE_MTL.png")
+    
+    # --- Generate Reliability Diagrams & Calculate ECE ---
+    os.makedirs("../results/calibration", exist_ok=True)
+    
+    ece_cp_s = plot_reliability_diagram_and_ece(preds_cp_single, known_cp, new_cp, all_genes, 
+                                                f"{experiment_name} - CP (Single)", 
+                                                f"../results/calibration/{experiment_name}_CP_Single_RelDiag.png")
+    
+    ece_cp_m = plot_reliability_diagram_and_ece(preds_cp_mtl, known_cp, new_cp, all_genes, 
+                                                f"{experiment_name} - CP (MTL)", 
+                                                f"../results/calibration/{experiment_name}_CP_MTL_RelDiag.png")
+    
+    ece_dee_s = plot_reliability_diagram_and_ece(preds_dee_single, known_dee, new_dee, all_genes, 
+                                                 f"{experiment_name} - DEE (Single)", 
+                                                 f"../results/calibration/{experiment_name}_DEE_Single_RelDiag.png")
+    
+    ece_dee_m = plot_reliability_diagram_and_ece(preds_dee_mtl, known_dee, new_dee, all_genes, 
+                                                 f"{experiment_name} - DEE (MTL)", 
+                                                 f"../results/calibration/{experiment_name}_DEE_MTL_RelDiag.png")
+
+    print("\n=== EXPECTED CALIBRATION ERROR (ECE) ===")
+    print(f"CP  (Single Task): {ece_cp_s:.4f} | CP  (Multi-Task): {ece_cp_m:.4f}")
+    print(f"DEE (Single Task): {ece_dee_s:.4f} | DEE (Multi-Task): {ece_dee_m:.4f}")
 
     # --- Record to Master CSV Ledger ---
     results_file = "../results/experiment_ledger.csv"
@@ -270,15 +277,15 @@ def main():
     
     with open(results_file, mode='a', newline='') as f:
         writer = csv.writer(f)
-        # Write the header if the file is brand new
         if not file_exists:
-            writer.writerow(["Experiment_Name", "Disease", "Architecture", "Median_Rank", "Fold_Enrichment_1%"])
+            # Added ECE to the header
+            writer.writerow(["Experiment_Name", "Disease", "Architecture", "Median_Rank", "Fold_Enrichment_1%", "ECE"])
             
-        # Append the 4 rows for this experiment
-        writer.writerow([experiment_name, "CP", "Single Task", mr_cp_s, fe_cp_s])
-        writer.writerow([experiment_name, "CP", "Multi-Task", mr_cp_m, fe_cp_m])
-        writer.writerow([experiment_name, "DEE", "Single Task", mr_dee_s, fe_dee_s])
-        writer.writerow([experiment_name, "DEE", "Multi-Task", mr_dee_m, fe_dee_m])
+        # Appended ECE variables to each row
+        writer.writerow([experiment_name, "CP", "Single Task", mr_cp_s, fe_cp_s, ece_cp_s])
+        writer.writerow([experiment_name, "CP", "Multi-Task", mr_cp_m, fe_cp_m, ece_cp_m])
+        writer.writerow([experiment_name, "DEE", "Single Task", mr_dee_s, fe_dee_s, ece_dee_s])
+        writer.writerow([experiment_name, "DEE", "Multi-Task", mr_dee_m, fe_dee_m, ece_dee_m])
 
     print(f"\nExperiment '{experiment_name}' complete! Results saved to ledger and plots generated.")
 
